@@ -67,3 +67,30 @@ export function fitLabel(easeCm) {
 }
 
 export const cmToIn = (cm) => Math.round((cm / 2.54) * 10) / 10;
+
+/** Allowed custom measurements per garment, in cm: [min, max]. */
+export const CUSTOM_LIMITS = {
+  tee: { chest: [76, 160], length: [50, 95], sleeve: [12, 40] },
+  hoodie: { chest: [84, 170], length: [50, 95], sleeve: [45, 72] },
+};
+
+export const MEASURES = [
+  { key: 'chest', label: 'Chest' },
+  { key: 'length', label: 'Length' },
+  { key: 'sleeve', label: 'Sleeve' },
+];
+
+/** Returns { key: message } for every out-of-range or missing value; empty when valid. */
+export function validateCustom(garmentId, m, units = 'cm') {
+  const errors = {};
+  const show = (cm) => (units === 'cm' ? `${cm} cm` : `${cmToIn(cm)} in`);
+  for (const { key, label } of MEASURES) {
+    const [lo, hi] = CUSTOM_LIMITS[garmentId][key];
+    const v = m[key];
+    if (!Number.isFinite(v)) errors[key] = `Enter a ${label.toLowerCase()} measurement.`;
+    else if (v < lo || v > hi) errors[key] = `${label} must be between ${show(lo)} and ${show(hi)}.`;
+  }
+  return errors;
+}
+
+export const inToCm = (inches) => Math.round(inches * 2.54 * 2) / 2;

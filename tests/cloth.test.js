@@ -9,7 +9,8 @@ function drape(id, size, seconds, chest = 96) {
   const body = makeBody(chest);
   const g = GARMENTS[id];
   const fabric = FABRICS[g.fabric];
-  const topo = buildGarment(makePattern(id, g.chart[size], body.armJoint), fabric);
+  const m = typeof size === 'string' ? g.chart[size] : size;
+  const topo = buildGarment(makePattern(id, m, body.armJoint), fabric);
   const cloth = new Cloth(topo, fabric, body);
   for (let t = 0; t < seconds; t += 1 / 60) cloth.step(1 / 60);
   return { body, topo, cloth };
@@ -67,6 +68,37 @@ describe('cloth simulation', () => {
       });
     });
   }
+
+  for (const [id, m] of [
+    ['tee', { chest: 76, length: 50, sleeve: 40 }],
+    ['tee', { chest: 160, length: 95, sleeve: 12 }],
+    ['hoodie', { chest: 84, length: 50, sleeve: 72 }],
+    ['hoodie', { chest: 170, length: 95, sleeve: 45 }],
+  ]) {
+    it(`${id} at custom extremes ${JSON.stringify(m)} stays stable`, () => {
+      const { body, cloth } = drape(id, m, 2);
+      for (let i = 0; i < cloth.n; i++) {
+        expect(Number.isFinite(cloth.pos[3 * i + 1])).toBe(true);
+        expect(body.sdf(cloth.pos[3 * i], cloth.pos[3 * i + 1], cloth.pos[3 * i + 2])).toBeGreaterThan(-0.005);
+      }
+      expect(cloth.strain().mean).toBeLessThan(0.1); // a garment smaller than the body stretches
+    });
+  }
+
+  it('keeps hoodie sleeves on top of the arm down the forearm', () => {
+    const { body, cloth } = drape('hoodie', 'M', 2.5);
+    const [jx, jy] = body.armJoint;
+    const d = [Math.cos(ARM_ANGLE), -Math.sin(ARM_ANGLE)];
+    for (const at of [0.15, 0.3, 0.42]) {
+      let top = -Infinity;
+      for (let i = 0; i < cloth.n; i++) {
+        const x = cloth.pos[3 * i] - jx, y = cloth.pos[3 * i + 1] - jy;
+        const along = x * d[0] + y * d[1], perp = -x * d[1] + y * d[0];
+        if (Math.abs(along - at) < 0.02 && Math.hypot(perp, cloth.pos[3 * i + 2]) < 0.15) top = Math.max(top, perp);
+      }
+      expect(top).toBeGreaterThan(0.02);
+    }
+  });
 
   it('keeps sleeves on top of the arms', () => {
     const { body, topo, cloth } = drape('hoodie', 'M', 2);

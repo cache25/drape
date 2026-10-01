@@ -1,4 +1,4 @@
-import { GARMENTS, SIZES, recommendSize, fitLabel, cmToIn } from './data/sizes.js';
+import { GARMENTS, SIZES, MEASURES, recommendSize, fitLabel, cmToIn, inToCm, validateCustom } from './data/sizes.js';
 import { makeBody } from './sim/body.js';
 import { makePattern } from './garment/pattern.js';
 import { buildGarment } from './garment/build.js';
@@ -18,7 +18,18 @@ const state = {
   wind: params.has('wind'),
   windStrength: 6,
   paused: false,
+  custom: loadCustom(), // per garment: { chest, length, sleeve } in cm, or null
 };
+
+const CUSTOM = 'Custom';
+const CUSTOM_KEY = 'drape.custom';
+function loadCustom() {
+  try { return { tee: null, hoodie: null, ...JSON.parse(localStorage.getItem(CUSTOM_KEY) || '{}') }; }
+  catch { return { tee: null, hoodie: null }; }
+}
+function saveCustom() {
+  try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(state.custom)); } catch { /* storage unavailable */ }
+}
 
 const studio = new Studio($('viewport'));
 if (params.get('cam')) studio.camera.position.fromArray(params.get('cam').split(',').map(Number));
@@ -26,12 +37,16 @@ let body = null;
 let cloth = null;
 
 function garment() { return GARMENTS[state.garment]; }
+/** Measurements of the selected size, chart or custom, in cm. */
+function measurements() {
+  return state.size === CUSTOM ? state.custom[state.garment] : garment().chart[state.size];
+}
 function fabric() { return FABRICS[garment().fabric]; }
 
 function drape() {
   body = makeBody(state.bodyChest);
   studio.setBody(body);
-  const topo = buildGarment(makePattern(state.garment, garment().chart[state.size], body.armJoint), fabric());
+  const topo = buildGarment(makePattern(state.garment, measurements(), body.armJoint), fabric());
   cloth = new Cloth(topo, fabric(), body);
   // ?warm=3 pre-simulates a few seconds (handy for screenshots of the settled drape).
   const warm = Number(params.get('warm')) || 0;
@@ -56,6 +71,8 @@ function renderGarments() {
     b.onclick = () => {
       if (state.garment === g.id) return;
       state.garment = g.id;
+      customDraft = null;
+      if (state.size === CUSTOM && !state.custom[g.id]) state.custom[g.id] = { ...g.chart.M };
       renderAll();
       drape();
     };
@@ -98,13 +115,17 @@ function renderBody() {
 
 function renderSizes() {
   const rec = recommendSize(state.garment, state.bodyChest);
-  $('sizes').replaceChildren(...SIZES.map((s) => {
-    const b = el('button', { 'aria-pressed': String(s === state.size), class: s === rec ? 'rec' : '', title: s === rec ? 'Recommended' : '' }, s);
+  const buttons = SIZES.map((s) => {
+    const b = el('button', { type: 'button', 'aria-pressed': String(s === state.size), class: s === rec ? 'rec' : '', title: s === rec ? 'Recommended' : '' }, s);
     b.onclick = () => selectSize(s);
     return b;
-  }));
+  });
+  const custom = el('button', { type: 'button', class: 'custom-btn', 'aria-pressed': String(state.size === CUSTOM), 'aria-expanded': String(state.size === CUSTOM) }, 'Custom measurements');
+  custom.onclick = openCustom;
+  $('sizes').replaceChildren(...buttons, custom);
+  renderCustomForm();
 
-  const ease = garment().chart[state.size].chest - state.bodyChest;
+  const ease = Math.round((measurements().chest - state.bodyChest) * 10) / 10;
   const pos = Math.min(100, Math.max(0, ((ease + 2) / 34) * 100));
   const easeText = state.units === 'cm' ? `${ease > 0 ? '+' : ''}${ease} cm` : `${ease > 0 ? '+' : ''}${cmToIn(ease)} in`;
   $('fit').innerHTML = `
@@ -112,9 +133,9 @@ function renderSizes() {
     <div class="fit-bar"><i style="left:${pos}%"></i></div>
     <div class="fit-scale"><span>Snug</span><span>Regular</span><span>Relaxed</span><span>Oversized</span></div>`;
 
-  const chart = garment().chart;
-  $('chart').replaceChildren(...SIZES.map((s) => {
-    const m = chart[s];
+  const rows = SIZES.map((s) => [s, garment().chart[s]]);
+  if (state.custom[state.garment]) rows.push([CUSTOM, state.custom[state.garment]]);
+  $('chart').replaceChildren(...rows.map(([s, m]) => {
     const tr = el('tr', { class: s === state.size ? 'sel' : '' });
     tr.append(el('td', {}, s), el('td', {}, fmt(m.chest)), el('td', {}, fmt(m.length)), el('td', {}, fmt(m.sleeve)));
     tr.onclick = () => selectSize(s);
@@ -122,9 +143,66 @@ function renderSizes() {
   }));
 }
 
+// ---- custom measurements ---------------------------------------------------
+
+let customDraft = null; // values being edited, in cm
+
+function openCustom() {
+  if (state.size === CUSTOM) return;
+  customDraft = { ...(state.custom[state.garment] || measurements()) };
+  state.size = CUSTOM;
+  if (!state.custom[state.garment]) {
+    // Nothing saved yet: start from the size that was showing, so the drape doesn't change.
+    state.custom[state.garment] = { ...customDraft };
+    saveCustom();
+  }
+  renderSizes();
+  renderBody();
+  $('custom-fields').querySelector('input')?.focus();
+}
+
+const toUnits = (cm) => (state.units === 'cm' ? cm : cmToIn(cm));
+
+function renderCustomForm() {
+  const form = $('custom-form');
+  form.hidden = state.size !== CUSTOM;
+  if (form.hidden) return;
+  if (!customDraft) customDraft = { ...state.custom[state.garment] };
+  const unit = state.units;
+  $('custom-fields').replaceChildren(...MEASURES.map(({ key, label }) => {
+    const input = el('input', { id: `custom-${key}`, type: 'number', inputmode: 'decimal', step: '0.5', value: String(toUnits(customDraft[key])), 'aria-describedby': 'custom-error' });
+    input.oninput = () => {
+      const v = parseFloat(input.value);
+      customDraft[key] = unit === 'cm' ? v : inToCm(v);
+    };
+    const field = el('span', { class: 'field' });
+    field.append(input, el('span', { class: 'unit' }, unit));
+    const wrap = el('label', { for: `custom-${key}` }, label);
+    wrap.append(field);
+    return wrap;
+  }));
+  $('custom-error').textContent = '';
+}
+
+$('custom-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const errors = validateCustom(state.garment, customDraft, state.units);
+  for (const { key } of MEASURES) $(`custom-${key}`).parentElement.classList.toggle('invalid', !!errors[key]);
+  const messages = Object.values(errors);
+  $('custom-error').textContent = messages.join(' ');
+  if (messages.length) return;
+  state.custom[state.garment] = { ...customDraft };
+  saveCustom();
+  renderSizes();
+  renderBody();
+  drape();
+});
+
 function selectSize(s) {
   if (s === state.size) return;
+  if (s === CUSTOM) return openCustom();
   state.size = s;
+  customDraft = null;
   renderSizes();
   renderBody();
   drape();

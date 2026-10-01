@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makePattern, segmentsIntersect } from '../src/garment/pattern.js';
-import { GARMENTS, SIZES } from '../src/data/sizes.js';
+import { GARMENTS, SIZES, CUSTOM_LIMITS } from '../src/data/sizes.js';
 
 const simple = ({ pts }) => {
   const n = pts.length;
@@ -36,5 +36,14 @@ describe('patterns', () => {
   it('cuts the front neck deeper than the back', () => {
     const p = makePattern('tee', GARMENTS.tee.chart.M);
     expect(p.front.pts[0][1]).toBeGreaterThan(p.back.pts[0][1]);
+  });
+
+  it('stays a valid pattern at every corner of the custom limits', () => {
+    for (const [id, lim] of Object.entries(CUSTOM_LIMITS)) {
+      for (const chest of lim.chest) for (const length of lim.length) for (const sleeve of lim.sleeve) {
+        const p = makePattern(id, { chest, length, sleeve });
+        for (const panel of [p.front, p.back]) expect(simple(panel)).toBe(true);
+      }
+    }
   });
 });

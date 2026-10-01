@@ -17,7 +17,7 @@ const STYLE = {
     shoulderInset: 0.02, drop: 0.035,
     neckHalf: 0.095, neckFront: 0.075, neckBack: 0.025,
     armWidth: (m) => 0.2 + (m.chest - 110) * 0.0008,
-    cuffWidth: () => 0.11,
+    cuffWidth: (m) => 0.135 + (m.chest - 110) * 0.0004,
     rib: { neck: 0, hem: 0.065, cuff: 0.065 },
     hoodHeight: 0.36,
   },
