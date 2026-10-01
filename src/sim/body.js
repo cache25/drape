@@ -1,10 +1,12 @@
-// Dress-form mannequin described as a union of round cones (capsules with two radii).
+// Full-body mannequin described as a union of round cones (capsules with two radii).
 // The same primitive list drives both the collision SDF and the visible mesh, so what
-// you see is exactly what the cloth collides with.
+// you see is exactly what the cloth collides with. Every slider measurement maps to a
+// part: circumferences are solved so the elliptical cross-sections measure exactly that.
+import { DEFAULT_BODY, clampBody } from '../data/sizes.js';
 
 const DEG = Math.PI / 180;
 export const ARM_ANGLE = 40 * DEG; // arms slope down from the shoulder, A-pose
-export const BASE_CHEST = 90; // cm, chest circumference of the unscaled form
+const TORSO_DEPTH = 0.72; // torso depth / width
 
 function roundCone(a, b, ra, rb, zs = 1) {
   const ba = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
@@ -31,35 +33,81 @@ function sdRoundCone(p, x, y, z) {
   return (Math.sqrt(x2 * a2 * il2) + yy * rr) * il2 - p.ra;
 }
 
-export function makeBody(chestCm = 92) {
-  const s = chestCm / BASE_CHEST;
-  const Z = 0.72; // torso depth / width
-  const shoulder = 0.15 * Math.sqrt(s);
-  const jx = shoulder + 0.04;
-  const jy = 1.44;
-  const armLen = 0.55;
+/** Ramanujan's ellipse perimeter. */
+export const ellipseCirc = (a, b) => Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)));
+
+/** Half-width of an ellipse with depth ratio k whose perimeter is `circ`. */
+const halfWidthFor = (circ, k) => circ / ellipseCirc(1, k);
+
+export function makeBody(measures = DEFAULT_BODY) {
+  const m = clampBody(measures);
+  const k = m.height / 176; // proportional scale for lengths not set directly
   const dx = Math.cos(ARM_ANGLE), dy = -Math.sin(ARM_ANGLE);
 
-  const prims = [
-    roundCone([0, 0.86, 0], [0, 1.1, 0], 0.17 * s, 0.135 * s, Z), // hips → waist
-    roundCone([0, 1.1, 0], [0, 1.29, 0], 0.135 * s, 0.165 * s, Z), // waist → bust
-    roundCone([0, 1.29, 0], [0, 1.38, 0], 0.165 * s, 0.15 * s, Z), // bust → shoulder dome
-    roundCone([-shoulder, 1.42, 0], [shoulder, 1.42, 0], 0.055, 0.055, 0.9), // shoulder line
-    roundCone([0, 1.45, 0], [0, 1.53, 0], 0.05, 0.048, 1), // neck stub
-  ];
+  // Landmarks (world metres, floor at y = 0).
+  const shoulderY = 1.44 * k;
+  const nape = shoulderY + 0.045;
+  const waistY = nape - m.backWaist / 100;
+  const hipY = waistY - 0.2 * k;
+  const bustY = nape - 0.21 * k;
+  const kneeY = 0.5 * k;
+  const ankleY = 0.085 * k;
+
+  const chestA = halfWidthFor(m.chest / 100, TORSO_DEPTH);
+  const waistA = halfWidthFor(m.waist / 100, TORSO_DEPTH);
+  // Pelvis: a horizontal capsule between the hip joints, sized so its cross-section is the hip.
+  const px = 0.09, pzs = 0.85;
+  let lo = 0.03, hi = 0.3;
+  for (let i = 0; i < 40; i++) {
+    const r = (lo + hi) / 2;
+    if (ellipseCirc(px + r, r * pzs) < m.hips / 100) lo = r; else hi = r;
+  }
+  const pelvisR = lo;
+  const neckR = m.neck / 100 / (2 * Math.PI);
+  const shoulderHalf = m.shoulder / 200;
+  const jx = shoulderHalf - 0.02, jy = shoulderY;
+
+  const prims = [];
+  const add = (p, part) => { p.part = part; prims.push(p); return p; };
+
+  // Head and neck
+  add(roundCone([0, m.height / 100 - 0.16 * k, 0.012], [0, m.height / 100 - 0.095 * k, 0.005], 0.08 * k, 0.092 * k, 0.92), 'head');
+  add(roundCone([0, nape - 0.05, 0], [0, nape + 0.09 * k, 0.005], neckR, neckR * 0.95, 1), 'neck');
+  // Torso
+  const lowR = Math.min(waistA * 1.04, pelvisR + px);
+  add(roundCone([0, hipY + 0.05, 0], [0, waistY, 0], lowR, waistA, TORSO_DEPTH), 'torso');
+  add(roundCone([0, waistY, 0], [0, bustY, 0], waistA, chestA, TORSO_DEPTH), 'torso');
+  add(roundCone([0, bustY, 0], [0, nape - 0.1 * k, 0], chestA, Math.min(chestA, 0.15), TORSO_DEPTH), 'torso');
+  add(roundCone([-(shoulderHalf - 0.055), shoulderY - 0.02, 0], [shoulderHalf - 0.055, shoulderY - 0.02, 0], 0.055, 0.055, 0.9), 'torso');
+  add(roundCone([-px, hipY, 0], [px, hipY, 0], pelvisR, pelvisR, pzs), 'pelvis');
+  const crotchY = Math.min(hipY - pelvisR, hipY + 0.05 - lowR);
+
+  // Arms: upper arm, forearm and hand along one straight line, so sleeves can follow it.
+  const armLen = m.arm / 100;
+  const legs = [];
   for (const side of [1, -1]) {
-    const a = [side * jx, jy, 0];
-    const b = [side * (jx + dx * armLen), jy + dy * armLen, 0];
-    prims.push(roundCone(a, b, 0.04, 0.027, 1));
+    const at = (t) => [side * (jx + dx * t), jy + dy * t, 0];
+    add(roundCone(at(0), at(armLen * 0.52), 0.045, 0.036), 'arm');
+    add(roundCone(at(armLen * 0.52), at(armLen), 0.036, 0.028), 'arm');
+    add(roundCone(at(armLen), at(armLen + 0.17 * k), 0.03, 0.022, 0.55), 'hand');
+
+    // Legs: thighs start inside the pelvis and splay a little so trousers have a gap to sew in.
+    const lx = Math.max(0.1, (px + pelvisR) * 0.52);
+    const thighR = Math.min(0.09, lx - 0.03); // leaves a gap between the thighs for an inseam
+    const hipJ = [side * lx, hipY - 0.03, 0], knee = [side * (lx + 0.025), kneeY, 0], ankle = [side * (lx + 0.04), ankleY, 0];
+    add(roundCone(hipJ, knee, thighR, 0.055), 'leg');
+    add(roundCone(knee, ankle, 0.055, 0.036), 'leg');
+    add(roundCone([side * (lx + 0.04), 0.045, -0.05], [side * (lx + 0.05), 0.035, 0.13], 0.045, 0.033), 'foot');
+    legs.push({ side, hip: hipJ, knee, ankle, thighR });
   }
 
   const bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   for (const p of prims) {
     const r = Math.max(p.ra, p.rb);
     for (const pt of [p.a, p.b]) {
-      for (let k = 0; k < 3; k++) {
-        bounds.min[k] = Math.min(bounds.min[k], pt[k] - r);
-        bounds.max[k] = Math.max(bounds.max[k], pt[k] + r);
+      for (let i = 0; i < 3; i++) {
+        bounds.min[i] = Math.min(bounds.min[i], pt[i] - r);
+        bounds.max[i] = Math.max(bounds.max[i], pt[i] + r);
       }
     }
   }
@@ -96,5 +144,19 @@ export function makeBody(chestCm = 92) {
     return out;
   }
 
-  return { chestCm, prims, bounds, sdf, normal, armJoint: [jx, jy] };
+  /** Centre of a leg at height y (linear along thigh, then shin). */
+  function legCenterX(y) {
+    const { hip, knee, ankle } = legs[0];
+    const [a, b] = y > knee[1] ? [hip, knee] : [knee, ankle];
+    const t = Math.min(1, Math.max(0, (a[1] - y) / (a[1] - b[1])));
+    return a[0] + (b[0] - a[0]) * t;
+  }
+
+  return {
+    measures: m, prims, bounds, sdf, normal, legCenterX,
+    armJoint: [jx, jy],
+    topY: shoulderY + 0.12, // where a top's shoulder line is first placed
+    waistY, hipY, crotchY,
+    height: m.height / 100,
+  };
 }

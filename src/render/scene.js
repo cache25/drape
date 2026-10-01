@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { makeFabricNormalMap } from './fabric.js';
+import { makeFabricNormalMap, FABRIC_KINDS } from './fabric.js';
 
 export class Studio {
   constructor(container) {
@@ -28,8 +28,9 @@ export class Studio {
     controls.target.set(0, 1.18, 0);
     controls.enableDamping = true;
     controls.minDistance = 0.8;
-    controls.maxDistance = 5;
+    controls.maxDistance = 7;
     controls.maxPolarAngle = Math.PI * 0.55;
+    controls.addEventListener('start', () => (this.goal = null)); // the user's orbit wins
     controls.update();
 
     const key = new THREE.DirectionalLight('#fff4e6', 3.2);
@@ -51,7 +52,7 @@ export class Studio {
     floor.receiveShadow = true;
     scene.add(floor);
 
-    this.normalMaps = { jersey: makeFabricNormalMap('jersey', renderer), fleece: makeFabricNormalMap('fleece', renderer) };
+    this.normalMaps = Object.fromEntries(FABRIC_KINDS.map((k) => [k, makeFabricNormalMap(k, renderer)]));
     this.material = new THREE.MeshPhysicalMaterial({
       color: '#ffffff', side: THREE.DoubleSide, vertexColors: true,
       roughness: 0.9, sheen: 1, sheenRoughness: 0.5,
@@ -61,7 +62,6 @@ export class Studio {
 
     this.formGroup = new THREE.Group();
     scene.add(this.formGroup);
-    this.addStand();
 
     this.raycaster = new THREE.Raycaster();
     this.dragPlane = new THREE.Plane();
@@ -83,13 +83,11 @@ export class Studio {
     this.camera.updateProjectionMatrix();
   }
 
-  addStand() {
-    const m = new THREE.MeshStandardMaterial({ color: '#2d2a27', roughness: 0.35, metalness: 0.6 });
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.74, 16), m);
-    pole.position.y = 0.37;
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.025, 48), m);
-    base.position.y = 0.0125;
-    for (const o of [pole, base]) { o.castShadow = true; o.receiveShadow = true; this.scene.add(o); }
+  /** Glide the camera to frame a region: keeps the viewing direction, sets target height and distance. */
+  focus(targetY, distance) {
+    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+    const target = new THREE.Vector3(0, targetY, 0);
+    this.goal = { target, position: target.clone().add(dir.multiplyScalar(distance)) };
   }
 
   setBody(body) {
@@ -117,7 +115,7 @@ export class Studio {
     geo.computeVertexNormals();
 
     const mat = this.material;
-    mat.normalMap = this.normalMaps[fabric === undefined ? 'jersey' : fabric.key];
+    mat.normalMap = this.normalMaps[fabric.key];
     mat.normalScale.setScalar(fabric.look.normalScale);
     mat.roughness = fabric.look.roughness;
     mat.sheen = fabric.look.sheen;
@@ -161,6 +159,12 @@ export class Studio {
   }
 
   render() {
+    if (this.goal) {
+      // Ease toward the goal, then hand control back to the user.
+      this.controls.target.lerp(this.goal.target, 0.12);
+      this.camera.position.lerp(this.goal.position, 0.12);
+      if (this.camera.position.distanceTo(this.goal.position) < 0.005) this.goal = null;
+    }
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }

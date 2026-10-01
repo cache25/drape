@@ -46,6 +46,30 @@ button { font: inherit; color: inherit; }
 h2 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 h2 .value { text-transform: none; letter-spacing: 0; color: var(--ink); font-weight: 500; font-size: 13px; }
 
+.garments { display: grid; gap: 10px; }
+.garment-group { display: grid; gap: 6px; }
+.garment-group > span { font-size: 11.5px; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { height: 34px; padding: 0 12px; border: 1px solid var(--line); background: #fff; border-radius: 999px; cursor: pointer; font-weight: 500; font-size: 13px; }
+.chips button[aria-pressed='true'], .chips button[aria-checked='true'] { background: var(--ink); border-color: var(--ink); color: #fff; }
+.link { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.slider-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: baseline; margin-top: 14px; font-size: 13px; }
+.slider-row input { grid-column: 1 / -1; }
+.slider-row output { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
+.blend { display: grid; gap: 10px; margin-top: 14px; }
+.fiber { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 8px; align-items: center; font-size: 13px; }
+.fiber input { grid-column: 1 / -1; }
+.fiber output { font-variant-numeric: tabular-nums; font-weight: 600; }
+.fiber .remove { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px; }
+.blend-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 12px; background: var(--chip); }
+.blend-bar i { display: block; height: 100%; }
+.blend-add { margin-top: 10px; }
+.blend-add select { width: 100%; height: 34px; border: 1px dashed var(--line); border-radius: 8px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; padding: 0 8px; }
+.fabric-summary { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+.body-sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; align-items: end; }
+.body-sliders .slider-row { margin-top: 6px; font-size: 12.5px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.chart-wrap { overflow-x: auto; }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--chip); border-radius: 12px; }
 .segmented button { border: 0; background: transparent; padding: 9px 8px; border-radius: 9px; cursor: pointer; font-weight: 500; }
 .segmented button[aria-selected='true'] { background: #fff; box-shadow: var(--shadow); }
@@ -56,7 +80,7 @@ h2 .value { text-transform: none; letter-spacing: 0; color: var(--ink); font-wei
 .swatch[aria-pressed='true']::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid var(--ink); }
 
 input[type='range'] { width: 100%; accent-color: var(--accent); }
-.recommend { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.recommend { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
 .recommend b { color: var(--ink); }
 .recommend button { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 
@@ -111,4 +135,5 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   .slider-tool input { width: 70px; }
   .hint { font-size: 11.5px; white-space: normal; width: max-content; max-width: calc(100% - 32px); text-align: center; }
   .stats { display: none; }
+  .body-sliders { grid-template-columns: 1fr; }
 }

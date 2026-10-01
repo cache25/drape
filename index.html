@@ -40,8 +40,7 @@
       <aside class="panel">
         <section>
           <h2>Garment</h2>
-          <div class="segmented" id="garments" role="tablist"></div>
-          <p class="fabric" id="fabric"></p>
+          <div class="garments" id="garments"></div>
         </section>
 
         <section>
@@ -50,9 +49,23 @@
         </section>
 
         <section>
-          <h2>Mannequin chest <span class="value" id="body-value"></span></h2>
-          <input id="body" type="range" min="80" max="128" step="1" value="96" aria-label="Mannequin chest" />
-          <p class="recommend" id="recommend"></p>
+          <h2>Fabric <button type="button" class="link" id="fabric-reset">Reset</button></h2>
+          <div class="chips" id="constructions" role="radiogroup" aria-label="Construction"></div>
+          <label class="slider-row" for="gsm">
+            <span>Weight</span><output id="gsm-value"></output>
+            <input id="gsm" type="range" step="5" />
+          </label>
+          <div class="blend" id="blend"></div>
+          <div class="blend-add">
+            <label for="add-fiber" class="sr">Add a fibre</label>
+            <select id="add-fiber"></select>
+          </div>
+          <p class="fabric-summary" id="fabric-summary"></p>
+        </section>
+
+        <section>
+          <h2>Mannequin <button type="button" class="link" id="body-reset">Reset</button></h2>
+          <div class="body-sliders" id="body-sliders"></div>
         </section>
 
         <section>
@@ -63,6 +76,7 @@
             <p class="custom-error" id="custom-error" role="alert"></p>
             <button type="submit" class="apply">Apply measurements</button>
           </form>
+          <p class="recommend" id="recommend"></p>
           <div class="fit" id="fit"></div>
         </section>
 
@@ -73,11 +87,13 @@
               <button data-units="cm" aria-pressed="true">cm</button><button data-units="in" aria-pressed="false">in</button>
             </span>
           </h2>
-          <table class="chart">
-            <thead><tr><th>Size</th><th>Chest</th><th>Length</th><th>Sleeve</th></tr></thead>
-            <tbody id="chart"></tbody>
-          </table>
-          <p class="note">Garment measurements. Chest is the full circumference, length from the high point of the shoulder.</p>
+          <div class="chart-wrap">
+            <table class="chart">
+              <thead id="chart-head"></thead>
+              <tbody id="chart"></tbody>
+            </table>
+          </div>
+          <p class="note" id="chart-note"></p>
         </section>
       </aside>
     </div>

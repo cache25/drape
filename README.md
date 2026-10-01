@@ -12,22 +12,29 @@ npm run build    # static site in dist/
 
 ## What you can do
 
-- **Pull the fabric.** Drag any part of the garment; release and it falls back and settles.
-- **Wind.** Gusty, direction-wandering wind with a strength slider.
-- **Sizes XS–XXL.** Click a size or a size-chart row (cm / in). The garment is rebuilt from its
-  pattern at that size and re-draped.
-- **Mannequin chest.** Resizes the form, recommends a size and shows ease on a Snug → Oversized scale.
-- **Colours**, pause and re-drape.
+- **Eight garments.** Tops: Classic Tee, Long Sleeve Tee, Tank Top, Crewneck Sweatshirt,
+  Cream Hoodie. Bottoms: Trousers, Shorts, Skirt.
+- **Fabric.** Pick a construction (single jersey, brushed fleece, twill, plain weave, satin), a
+  weight in gsm, and a fibre blend in percent (cotton, polyester, elastane, wool, linen, viscose,
+  nylon, silk). The blend drives the physics: elastane adds stretch, viscose and silk drape,
+  linen is crisp, synthetics are slicker and shinier.
+- **Mannequin.** A full-body form you can resize: height, neck, shoulder width, chest, waist,
+  hips, back waist length and arm length.
+- **Sizes XS–XXL or custom measurements.** Every garment has its own size chart (cm / in);
+  enter your own measurements to cut a custom size. Fit is shown as ease on a Snug →
+  Oversized scale, with a recommended size for the current mannequin.
+- **Pull the fabric**, turn on **wind**, pause, re-drape.
 
 ## How it works
 
 | Piece | File |
 | --- | --- |
-| Size charts, recommendation, fit labels | `src/data/sizes.js` |
-| Flat sewing patterns (front, back, hood) with labelled edges | `src/garment/pattern.js` |
+| Garment catalogue, size charts, mannequin measurements, fit | `src/data/sizes.js` |
+| Constructions, fibres and blend → solver parameters | `src/data/fabrics.js` |
+| Flat sewing patterns cut to the mannequin (tops, tank, trousers, skirt, hood) | `src/garment/pattern.js` |
 | Grids panels, sews seams, adds hood + drawstrings, ribbed bands | `src/garment/build.js` |
 | XPBD cloth solver: stretch/shear/bend, sewing, air & wind, friction | `src/sim/cloth.js` |
-| Dress form as round-cone SDF (collision and visible mesh) | `src/sim/body.js` |
+| Full-body mannequin as a round-cone SDF (collision and visible mesh) | `src/sim/body.js` |
 | Three.js studio, knit normal maps, drag-to-pull | `src/render/` |
 
 The garment is built the way garment CAD does it. Flat front and back panels start in front of and

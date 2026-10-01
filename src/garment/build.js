@@ -1,11 +1,10 @@
 // Turns flat patterns into a sewn particle mesh: grids each panel, merges the front and
 // back along their seam edges, attaches the hood and drawstrings, and emits the
 // constraints and triangles the solver and renderer need.
-import { TOP_Y, pointInPolygon, closestOnOutline } from './pattern.js';
+import { pointInPolygon, closestOnOutline } from './pattern.js';
 
 const key = (i, j) => `${i},${j}`;
 const conKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
-export const PANEL_GAP = 0.2;
 
 /** Regular grid of square cells over a polygon. Boundary vertices snap onto the outline. */
 export function gridPanel(poly, h) {
@@ -44,10 +43,12 @@ class TopoBuilder {
   constructor() {
     this.flat = []; this.pos = []; this.shade = []; this.thick = []; this.mass = [];
     this.rib = [];
+    this.band = [];
     this.tris = [];
     this.cons = new Map();
   }
-  addParticle(fx, fy, p, { shade = 1, thick = 0.006, rib = false } = {}) {
+  addParticle(fx, fy, p, { shade = 1, thick = 0.006, rib = false, band = false } = {}) {
+    this.band.push(band);
     this.flat.push(fx, fy);
     this.pos.push(p[0], p[1], p[2]);
     this.shade.push(shade);
@@ -108,26 +109,55 @@ function emitPanel(tb, grid, { place, share, opts, flip, density }) {
   return idx;
 }
 
-export function buildGarment(pattern, fabric, h = 0.02) {
+const polygonArea = (pts) => Math.abs(pts.reduce((s, [x, y], i) => {
+  const [x2, y2] = pts[(i + 1) % pts.length];
+  return s + x * y2 - x2 * y;
+}, 0)) / 2;
+
+/**
+ * Sew a garment from its pattern. Grid spacing defaults to 2 cm and coarsens for big
+ * panels so long sleeves and trousers stay fast enough to simulate live.
+ */
+export function buildGarment(pattern, fabric, h = Math.max(0.02, Math.sqrt(polygonArea(pattern.front.pts) / 1300))) {
   const tb = new TopoBuilder();
   const density = fabric.density;
   const front = gridPanel(pattern.front, h);
   const back = gridPanel(pattern.back, h);
 
-  // Ribbed bands (collar, cuffs, hem): stiffer and a touch darker, like a real knit trim.
+  // Ribbed bands (collar, cuffs, hem, waistband): stiffer and a touch darker, like a real trim.
   const ribOpts = (poly) => (v) => {
     const rib = Object.entries(pattern.rib).some(([label, w]) => w > 0 && closestOnOutline(poly, v.x, v.y, label).dist < w);
-    return { rib, shade: rib ? 0.93 : 1 };
+    const band = !!pattern.rib.waist && closestOnOutline(poly, v.x, v.y, 'waist').dist < pattern.rib.waist;
+    // A snug band presses into the (notionally soft) form, so it gets a thinner collision shell.
+    return { rib, band, shade: rib ? 0.93 : 1, ...(band ? { thick: 0.002 } : {}) };
   };
 
   // Panels start flat, in front of and behind the form; sewing pulls the seams shut.
-  const place = (v, z) => [v.x, TOP_Y - v.y, z];
+  const TOP = pattern.topY;
+  const place = (v, z) => [v.x, TOP - v.y, z];
 
-  const frontIdx = emitPanel(tb, front, { place: (v) => place(v, PANEL_GAP), opts: ribOpts(pattern.front), flip: false, density });
-  const backIdx = emitPanel(tb, back, { place: (v) => place(v, -PANEL_GAP), opts: ribOpts(pattern.back), flip: true, density });
+  const frontIdx = emitPanel(tb, front, { place: (v) => place(v, pattern.gap), opts: ribOpts(pattern.front), flip: false, density });
+  const backIdx = emitPanel(tb, back, { place: (v) => place(v, -pattern.gap), opts: ribOpts(pattern.back), flip: true, density });
+  // Waistbands are nearly inextensible. Long-range tethers across each band row keep it from
+  // stretching over the hips under the garment's weight, which neighbour-only links can't.
+  for (const [grid, idx] of [[front, frontIdx], [back, backIdx]]) {
+    const rows = new Map();
+    for (const [k, v] of grid.verts) {
+      const p = idx.get(k);
+      if (!tb.band[p]) continue;
+      if (!rows.has(v.j)) rows.set(v.j, []);
+      rows.get(v.j).push({ i: v.i, p });
+    }
+    for (const row of rows.values()) {
+      row.sort((a, b) => a.i - b.i);
+      for (const gap of [3, 6, 12, 24]) {
+        for (let n = 0; n + gap < row.length; n += Math.max(1, gap >> 1)) tb.addCon(row[n].p, row[n + gap].p, 'tether');
+      }
+    }
+  }
   const isSeam = (v) => v && v.boundary && v.label === 'seam';
   const sl = pattern.front.sleeve;
-  const inSleeve = (v) => (Math.abs(v.x) - sl.S0[0]) * sl.d[0] + (v.y - sl.S0[1]) * sl.d[1] > 0.02 && Math.abs(v.x) > sl.S0[0] - 0.01;
+  const inSleeve = (v) => !!sl && (Math.abs(v.x) - sl.S0[0]) * sl.d[0] + (v.y - sl.S0[1]) * sl.d[1] > 0.02 && Math.abs(v.x) > sl.S0[0] - 0.01;
   for (const [k, v] of back.verts) {
     if (!isSeam(v) || !isSeam(front.verts.get(k))) continue;
     tb.addSew(frontIdx.get(k), backIdx.get(k));
@@ -143,7 +173,7 @@ export function buildGarment(pattern, fabric, h = 0.02) {
     const backNeck = [];
     for (const [k, v] of back.verts) if (v.label === 'neck' || (isSeam(v) && v.y < 0.02)) backNeck.push({ v, p: backIdx.get(k) });
     const idx = emitPanel(tb, hood, {
-      place: (v) => [v.x, TOP_Y - 0.02 - v.y, -PANEL_GAP - 0.03],
+      place: (v) => [v.x, TOP - 0.02 - v.y, -pattern.gap - 0.03],
       opts: (v) => ({ thick: 0.02, shade: closestOnOutline(pattern.hood, v.x, v.y, 'face').dist < 0.03 && v.y > 0.01 ? 0.94 : 1 }),
       flip: true, density: density * 2, // two layers of fleece
     });
@@ -185,6 +215,14 @@ export function buildGarment(pattern, fabric, h = 0.02) {
   for (let i = 0; i < tb.mass.length; i++) tb.mass[i] = Math.max(tb.mass[i], minMass);
   const n = tb.pos.length / 3;
   const cons = [...tb.cons.values()];
+  if (pattern.waistCinch < 1) {
+    // Gather the waistband: shorten its horizontal rest lengths so it fits the form's waist.
+    for (const c of cons) {
+      if (c.kind === 'sew' || !tb.band[c.a] || !tb.band[c.b]) continue;
+      const dx = (tb.flat[2 * c.a] - tb.flat[2 * c.b]) * pattern.waistCinch, dy = tb.flat[2 * c.a + 1] - tb.flat[2 * c.b + 1];
+      c.rest = Math.hypot(dx, dy);
+    }
+  }
   const ribFlag = tb.rib;
   return {
     n,

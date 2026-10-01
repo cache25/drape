@@ -2,20 +2,7 @@
 // physical (N/m), masses come from the fabric's areal density, and air is modelled
 // per-triangle so the same code gives both air drag and wind.
 
-export const FABRICS = {
-  jersey: {
-    key: 'jersey', name: 'Cotton jersey', gsm: 180, stretchPct: 5,
-    density: 0.18, stretch: 900, shear: 90, bend: 0.9,
-    friction: 0.5, damping: 0.25,
-    look: { roughness: 0.88, sheen: 0.6, sheenRoughness: 0.45, normalScale: 0.55, tile: 0.05 },
-  },
-  fleece: {
-    key: 'fleece', name: 'Brushed cotton fleece', gsm: 320, stretchPct: 3,
-    density: 0.32, stretch: 1600, shear: 180, bend: 3.2,
-    friction: 0.6, damping: 0.35,
-    look: { roughness: 0.95, sheen: 1.0, sheenRoughness: 0.75, normalScale: 0.35, tile: 0.08 },
-  },
-};
+// Fabrics (stiffness, mass, friction, look) come from src/data/fabrics.js → blendFabric().
 
 const RHO_AIR = 1.2;
 const MAX_SPEED = 12;
@@ -44,10 +31,12 @@ export class Cloth {
     this.compliance = new Float32Array(m);
     const k = {
       stretch: fabric.stretch, shear: fabric.shear, bend: fabric.bend,
-      sew: 0, rope: 0, ropeBend: 0.08,
+      sew: 0, rope: 0, ropeBend: 0.08, tether: 0,
     };
+    this.unilateral = new Uint8Array(m); // tethers only resist stretching
     topo.cons.forEach((c, i) => {
       this.ca[i] = c.a; this.cb[i] = c.b; this.rest[i] = c.rest;
+      this.unilateral[i] = c.kind === 'tether' ? 1 : 0;
       let stiff = k[c.kind];
       if (c.rib && (c.kind === 'stretch' || c.kind === 'bend')) stiff *= 3;
       this.compliance[i] = stiff > 0 ? 1 / stiff : 0;
@@ -166,7 +155,7 @@ export class Cloth {
   }
 
   solveConstraints(h) {
-    const { pos, invMass, ca, cb, rest, compliance } = this;
+    const { pos, invMass, ca, cb, rest, compliance, unilateral } = this;
     const ih2 = 1 / (h * h);
     for (let c = 0, m = ca.length; c < m; c++) {
       const i = ca[c], j = cb[c];
@@ -178,6 +167,7 @@ export class Cloth {
       const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (len < 1e-9) continue;
       const C = len - rest[c];
+      if (C < 0 && unilateral[c]) continue;
       const s = C / (w + compliance[c] * ih2) / len;
       pos[i3] += wi * s * dx; pos[i3 + 1] += wi * s * dy; pos[i3 + 2] += wi * s * dz;
       pos[j3] -= wj * s * dx; pos[j3 + 1] -= wj * s * dy; pos[j3 + 2] -= wj * s * dz;

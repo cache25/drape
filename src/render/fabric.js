@@ -69,8 +69,64 @@ function fleeceHeight() {
   return hf;
 }
 
+// Twill: raised diagonal wales, the 2/1 weave of chinos and denim.
+function twillHeight() {
+  const hf = new Float32Array(N * N);
+  const pitch = N / 24;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const u = ((x + y) % pitch) / pitch; // diagonal phase
+      const thread = 0.5 + 0.5 * Math.cos((y / N) * Math.PI * 2 * 64); // fine weft
+      hf[y * N + x] = Math.pow(Math.sin(Math.PI * u), 0.8) * 0.85 + thread * 0.15;
+    }
+  }
+  return hf;
+}
+
+// Linen: plain over-under weave with irregular slubs in the yarn.
+function linenHeight() {
+  const hf = new Float32Array(N * N);
+  const cells = 48;
+  let seed = 11;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const slubX = Array.from({ length: cells }, () => 0.75 + rand() * 0.5);
+  const slubY = Array.from({ length: cells }, () => 0.75 + rand() * 0.5);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const cx = Math.floor((x / N) * cells), cy = Math.floor((y / N) * cells);
+      const fx = ((x / N) * cells) % 1, fy = ((y / N) * cells) % 1;
+      const over = (cx + cy) % 2 === 0; // warp over weft, alternating
+      const warp = Math.sin(Math.PI * fx) * slubX[cx];
+      const weft = Math.sin(Math.PI * fy) * slubY[cy];
+      hf[y * N + x] = over ? warp * 0.8 + weft * 0.3 : weft * 0.8 + warp * 0.3;
+    }
+  }
+  return hf;
+}
+
+// Satin: long floats give a smooth face with only faint warp lines.
+function satinHeight() {
+  const hf = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      hf[y * N + x] = 0.5 + 0.5 * Math.sin((x / N) * Math.PI * 2 * 96) * 0.6 + ((x * 7 + y * 3) % 16 === 0 ? 0.3 : 0);
+    }
+  }
+  return hf;
+}
+
+const MAKERS = {
+  jersey: () => heightToNormal(jerseyHeight(), 2.2),
+  fleece: () => heightToNormal(fleeceHeight(), 1.4),
+  twill: () => heightToNormal(twillHeight(), 1.6),
+  linen: () => heightToNormal(linenHeight(), 1.8),
+  satin: () => heightToNormal(satinHeight(), 0.6),
+};
+
+export const FABRIC_KINDS = Object.keys(MAKERS);
+
 export function makeFabricNormalMap(kind, renderer) {
-  const data = kind === 'jersey' ? heightToNormal(jerseyHeight(), 2.2) : heightToNormal(fleeceHeight(), 1.4);
+  const data = MAKERS[kind]();
   const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.generateMipmaps = true;
