@@ -4,6 +4,7 @@
 import { TOP_Y, pointInPolygon, closestOnOutline } from './pattern.js';
 
 const key = (i, j) => `${i},${j}`;
+const conKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 export const PANEL_GAP = 0.2;
 
 /** Regular grid of square cells over a polygon. Boundary vertices snap onto the outline. */
@@ -32,7 +33,7 @@ export function gridPanel(poly, h) {
     if (v.boundary) {
       const c = closestOnOutline(poly, v.x, v.y);
       v.label = c.label;
-      v.x = c.x; v.y = c.y;
+      if (c.dist < 0.75 * h) { v.x = c.x; v.y = c.y; }
     }
     verts.set(k, v);
   }
@@ -57,7 +58,7 @@ class TopoBuilder {
   }
   addCon(a, b, kind, rest) {
     if (a === b) return;
-    const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+    const k = conKey(a, b);
     if (this.cons.has(k)) return;
     if (rest === undefined) rest = Math.hypot(this.flat[2 * a] - this.flat[2 * b], this.flat[2 * a + 1] - this.flat[2 * b + 1]);
     this.cons.set(k, { a, b, kind, rest });
@@ -107,33 +108,6 @@ function emitPanel(tb, grid, { place, share, opts, flip, density }) {
   return idx;
 }
 
-/** Collect neck particles for one side, ordered from centre front around to centre back. */
-function neckChain(tb, front, back, frontIdx, backIdx, side) {
-  const pick = (grid, idx) => {
-    const out = [];
-    for (const [k, v] of grid.verts) {
-      if (v.label === 'neck' && side * v.x >= -1e-6) out.push({ v, p: idx.get(k), ang: Math.atan2(Math.abs(v.x), v.y) });
-    }
-    return out;
-  };
-  const f = pick(front, frontIdx).sort((a, b) => a.ang - b.ang);
-  const b = pick(back, backIdx).sort((a, b2) => b2.ang - a.ang);
-  const chain = [...f, ...b];
-  let acc = 0;
-  chain.forEach((c, n) => {
-    if (n > 0) acc += Math.hypot(c.v.x - chain[n - 1].v.x, c.v.y - chain[n - 1].v.y);
-    c.s = acc;
-  });
-  chain.forEach((c) => (c.s /= acc || 1));
-  return chain;
-}
-
-function chainAt(tb, chain, s) {
-  let best = chain[0];
-  for (const c of chain) if (Math.abs(c.s - s) < Math.abs(best.s - s)) best = c;
-  return best.p;
-}
-
 export function buildGarment(pattern, fabric, h = 0.02) {
   const tb = new TopoBuilder();
   const density = fabric.density;
@@ -152,34 +126,34 @@ export function buildGarment(pattern, fabric, h = 0.02) {
   const frontIdx = emitPanel(tb, front, { place: (v) => place(v, PANEL_GAP), opts: ribOpts(pattern.front), flip: false, density });
   const backIdx = emitPanel(tb, back, { place: (v) => place(v, -PANEL_GAP), opts: ribOpts(pattern.back), flip: true, density });
   const isSeam = (v) => v && v.boundary && v.label === 'seam';
+  const sl = pattern.front.sleeve;
+  const inSleeve = (v) => (Math.abs(v.x) - sl.S0[0]) * sl.d[0] + (v.y - sl.S0[1]) * sl.d[1] > 0.02 && Math.abs(v.x) > sl.S0[0] - 0.01;
   for (const [k, v] of back.verts) {
-    if (isSeam(v) && isSeam(front.verts.get(k))) tb.addSew(frontIdx.get(k), backIdx.get(k));
+    if (!isSeam(v) || !isSeam(front.verts.get(k))) continue;
+    tb.addSew(frontIdx.get(k), backIdx.get(k));
+    if (inSleeve(v)) tb.cons.get(conKey(frontIdx.get(k), backIdx.get(k))).pace = 0.5;
   }
 
   const ropes = [];
   let ropeMeta = null;
-  let nudge = null;
   if (pattern.hood) {
     const hood = gridPanel(pattern.hood, h);
-    const { length: Lh } = pattern.hood;
-    const halves = [];
-    for (const side of [1, -1]) {
-      const chain = neckChain(tb, front, back, frontIdx, backIdx, side);
-      // Each half starts upright beside the neck and is sewn into a pouch; the solver then
-      // folds it back (see `nudge`) so it settles on the shoulders like a real hood worn down.
-      const idx = emitPanel(tb, hood, {
-        place: (v) => [side * 0.11, TOP_Y + 0.97 * v.y, 0.1 - v.x - 0.26 * v.y],
-        opts: () => ({ thick: 0.022 }),
-        flip: side > 0, density,
-      });
-      halves.push(idx);
-      for (const [k, v] of hood.verts) {
-        if (v.boundary && v.label === 'attach') tb.addSew(idx.get(k), chainAt(tb, chain, v.x / Lh));
-      }
+    const { halfTop, neckHalf } = pattern.hood;
+    // Hangs flat just behind the back panel; its top edge is sewn along the back neckline.
+    const backNeck = [];
+    for (const [k, v] of back.verts) if (v.label === 'neck' || (isSeam(v) && v.y < 0.02)) backNeck.push({ v, p: backIdx.get(k) });
+    const idx = emitPanel(tb, hood, {
+      place: (v) => [v.x, TOP_Y - 0.02 - v.y, -PANEL_GAP - 0.03],
+      opts: (v) => ({ thick: 0.02, shade: closestOnOutline(pattern.hood, v.x, v.y, 'face').dist < 0.03 && v.y > 0.01 ? 0.94 : 1 }),
+      flip: true, density: density * 2, // two layers of fleece
+    });
+    for (const [k, v] of hood.verts) {
+      if (!(v.boundary && v.label === 'attach')) continue;
+      const tx = (v.x / halfTop) * (neckHalf + 0.03);
+      let best = backNeck[0];
+      for (const c of backNeck) if (Math.abs(c.v.x - tx) + c.v.y < Math.abs(best.v.x - tx) + best.v.y) best = c;
+      tb.addSew(idx.get(k), best.p);
     }
-    for (const [k, v] of hood.verts) if (isSeam(v)) tb.addSew(halves[0].get(k), halves[1].get(k));
-    const hoodIds = new Set(halves.flatMap((m) => [...m.values()]));
-    nudge = { ids: [...hoodIds], accel: [0, -3, -14], from: 0.45, to: 1.3 };
 
     // Drawstrings hang from the front neckline, either side of centre.
     const ropeLen = 0.32, segs = 14;
@@ -223,7 +197,6 @@ export function buildGarment(pattern, fabric, h = 0.02) {
     cons: cons.map((c) => ({ ...c, rib: ribFlag[c.a] || ribFlag[c.b] })),
     ropes,
     ropeMeta,
-    nudge,
     stats: { front: front.verts.size, back: back.verts.size },
   };
 }

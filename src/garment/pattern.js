@@ -16,8 +16,8 @@ const STYLE = {
   hoodie: {
     shoulderInset: 0.02, drop: 0.035,
     neckHalf: 0.095, neckFront: 0.075, neckBack: 0.025,
-    armWidth: (m) => 0.18 + (m.chest - 110) * 0.0008,
-    cuffWidth: () => 0.1,
+    armWidth: (m) => 0.2 + (m.chest - 110) * 0.0008,
+    cuffWidth: () => 0.11,
     rib: { neck: 0, hem: 0.065, cuff: 0.065 },
     hoodHeight: 0.36,
   },
@@ -73,23 +73,25 @@ function bodyPanel(st, m, neckDepth, armJoint) {
   return { ...mirrorHalf(right), sleeve: { S0, d, n, tU: t, wArm, S, wCuff } };
 }
 
+/**
+ * A hood worn down, as it reads on a form: a doubled, rounded flap lying on the upper back.
+ * Coordinates are x across, y down from the back neckline; its top edge is sewn to the neck.
+ */
 function hoodPanel(st) {
-  const Lh = quarterEllipse(st.neckHalf, st.neckFront) + quarterEllipse(st.neckHalf, st.neckBack);
-  const Hh = st.hoodHeight;
-  const pts = [[0, 0], [Lh, 0]];
-  const labels = ['attach', 'seam'];
-  const K = 8;
+  const top = st.neckHalf + 0.035; // reaches round the neck to just past the shoulder seam
+  const wide = top + 0.05;
+  const depth = st.hoodHeight * 0.8;
+  const pts = [[-top, 0], [top, 0]];
+  const labels = ['attach', 'face'];
+  const K = 10;
   for (let k = 0; k <= K; k++) {
-    const a = (Math.PI / 2) * (k / K);
-    pts.push([0.3 * Lh + 0.7 * Lh * Math.cos(a), 0.5 * Hh + 0.5 * Hh * Math.sin(a)]);
-    labels.push('seam');
+    const a = (Math.PI * k) / K; // round bottom, from the right side across to the left
+    pts.push([wide * Math.cos(a), depth * 0.45 + depth * 0.55 * Math.sin(a)]);
+    labels.push('face');
   }
-  pts.push([0, 0.96 * Hh]);
-  labels.push('face');
-  return { pts, labels, length: Lh, height: Hh };
+  return { pts, labels, halfTop: top, neckHalf: st.neckHalf };
 }
 
-/** `armJoint` is the form's shoulder joint [x, y] in world space; sleeves are angled to suit it. */
 export function makePattern(garmentId, measurements, armJoint = [0.19, 1.44]) {
   const st = STYLE[garmentId];
   return {

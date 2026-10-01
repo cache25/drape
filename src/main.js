@@ -16,7 +16,7 @@ const state = {
   bodyChest: Number(params.get('chest')) || 96,
   units: 'cm',
   wind: params.has('wind'),
-  windStrength: 4.5,
+  windStrength: 6,
   paused: false,
 };
 
@@ -168,6 +168,7 @@ $('pause').onclick = () => {
 };
 $('redrape').onclick = () => drape();
 studio.onGrab = () => $('hint').classList.add('hide');
+if (matchMedia('(pointer: coarse)').matches) $('hint').textContent = 'Drag the fabric to pull it · drag around it to orbit';
 
 // ---- loop ------------------------------------------------------------------
 

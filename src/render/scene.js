@@ -78,6 +78,8 @@ export class Studio {
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
+    // Portrait screens: widen the view so the arms stay in frame.
+    this.camera.fov = Math.min(58, 32 * Math.max(1, 0.85 / this.camera.aspect));
     this.camera.updateProjectionMatrix();
   }
 

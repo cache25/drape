@@ -56,6 +56,8 @@ export class Cloth {
     this.sew = [];
     topo.cons.forEach((c, i) => { if (c.kind === 'sew') this.sew.push(i); });
     this.sewRest = Float32Array.from(this.sew, (i) => this.rest[i]);
+    // Sleeves are sewn first so they close round the arms before the body seams tug on them.
+    this.sewPace = Float32Array.from(this.sew, (i) => topo.cons[i].pace || 1);
 
     this.grabbed = -1;
     this.grabTarget = [0, 0, 0];
@@ -110,17 +112,11 @@ export class Cloth {
     const substeps = env.substeps || 10;
     const h = dt / substeps;
     // Sewing: seam gaps close over SEW_TIME, then stay stitched.
-    const sewLeft = Math.max(0, 1 - (this.time + dt) / SEW_TIME);
-    for (let k = 0; k < this.sew.length; k++) this.rest[this.sew[k]] = this.sewRest[k] * sewLeft;
-    this.computeAir(wind);
-    // Scripted hand: a temporary push, e.g. folding a hood back once it has been sewn.
-    const nudge = this.topo.nudge;
-    if (nudge && this.time >= nudge.from && this.time < nudge.to) {
-      for (const i of nudge.ids) {
-        const m = 1 / this.baseInvMass[i];
-        for (let c = 0; c < 3; c++) this.force[3 * i + c] += nudge.accel[c] * m;
-      }
+    for (let k = 0; k < this.sew.length; k++) {
+      const left = Math.max(0, 1 - (this.time + dt) / (SEW_TIME * this.sewPace[k]));
+      this.rest[this.sew[k]] = this.sewRest[k] * left;
     }
+    this.computeAir(wind);
     for (let s = 0; s < substeps; s++) this.substep(h, s / substeps);
     this.time += dt;
   }
@@ -229,11 +225,11 @@ export class Cloth {
   }
 }
 
-/** Gusty wind: slowly wandering direction, layered sine "noise" on strength. */
+/** Gusty wind across the form: a slowly wandering direction and layered-sine gusts. */
 export function windAt(t, strength) {
   if (strength <= 0) return [0, 0, 0];
-  const gust = 0.55 + 0.25 * Math.sin(t * 1.3) + 0.15 * Math.sin(t * 3.7 + 1.2) + 0.08 * Math.sin(t * 9.1 + 0.4);
-  const ang = -Math.PI / 2 + 0.35 * Math.sin(t * 0.4) + 0.4;
-  const s = strength * Math.max(0.1, gust);
-  return [Math.cos(ang) * s * -1, 0.08 * s * Math.sin(t * 2.1), Math.sin(ang) * s * -1];
+  const gust = 0.6 + 0.25 * Math.sin(t * 1.3) + 0.18 * Math.sin(t * 3.7 + 1.2) + 0.1 * Math.sin(t * 9.1 + 0.4);
+  const ang = 0.5 + 0.45 * Math.sin(t * 0.37); // radians from +x toward +z: mostly from the side
+  const s = strength * Math.max(0.15, gust);
+  return [Math.cos(ang) * s, 0.12 * s * Math.sin(t * 2.3), Math.sin(ang) * s];
 }

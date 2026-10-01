@@ -50,7 +50,7 @@ export function makeBody(chestCm = 92) {
   for (const side of [1, -1]) {
     const a = [side * jx, jy, 0];
     const b = [side * (jx + dx * armLen), jy + dy * armLen, 0];
-    prims.push(roundCone(a, b, 0.046, 0.03, 1));
+    prims.push(roundCone(a, b, 0.04, 0.027, 1));
   }
 
   const bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
