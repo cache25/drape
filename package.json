@@ -1,0 +1,20 @@
+{
+  "name": "drape",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Realistic 3D garment mockups with live cloth simulation and size charts",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  }
+}
